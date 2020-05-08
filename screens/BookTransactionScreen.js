@@ -52,7 +52,7 @@ export default class TransactionScreen extends React.Component {
 
   initiateBookIssue = async ()=>{
     //add a transaction
-    db.collection("transaction").add({
+    db.collection("transactions").add({
       'studentId' : this.state.scannedStudentId,
       'bookId' : this.state.scannedBookId,
       'data' : firebase.firestore.Timestamp.now().toDate(),
@@ -67,7 +67,7 @@ export default class TransactionScreen extends React.Component {
     db.collection("students").doc(this.state.scannedStudentId).update({
       'numberOfBooksIssued' : firebase.firestore.FieldValue.increment(1)
     })
-
+Alert.alert("book issued")
     this.setState({
       scannedStudentId : '',
       scannedBookId: ''
@@ -92,33 +92,105 @@ export default class TransactionScreen extends React.Component {
     db.collection("students").doc(this.state.scannedStudentId).update({
       'numberOfBooksIssued' : firebase.firestore.FieldValue.increment(-1)
     })
-
+Alert.alert("book returned")
     this.setState({
       scannedStudentId : '',
       scannedBookId : ''
     })
   }
+checkBookEligibility=async()=>{
+  const bookRef=await db.collection("books").where("bookId","==",this.state.scannedBookId).get()
+  var transactionType=""
+  if (bookRef.docs.length===0){
 
-  handleTransaction = async()=>{
-    var transactionMessage = null;
-    db.collection("books").doc(this.state.scannedBookId).get()
-    .then((doc)=>{
-      var book = doc.data()
+    transactionType=false;
+  }
+  else{
+    bookRef.docs.map((doc)=>{
+      var book=doc.data()
       if(book.bookAvailability){
-        this.initiateBookIssue();
-        transactionMessage = "Book Issued"
-        ToastAndroid.show(transactionMessage,ToastAndroid.SHORT)
+        transactionType="issue"
       }
       else{
-        this.initiateBookReturn();
-        transactionMessage = "Book Returned"
-       ToastAndroid.show(transactionMessage,ToastAndroid.SHORT)
+        transactionType="return"
       }
     })
-
+  }
+  return transactionType
+}
+checkStudentEligibilityForBookIssue=async()=>{
+  const studentRef=await db.collection("students").where("studentId","==",this.state.scannedStudentId).get()
+  var isStudentEligible=""
+  if (studentRef.docs.length===0){
     this.setState({
-      transactionMessage : transactionMessage
+      scannedStudentId:"",
+      scannedBookId:""
     })
+    isStudentEligible=false
+    Alert.alert("the studentid does not exist")
+  }
+  else{
+    studentRef.docs.map((doc)=>{
+      var student=doc.data()
+      if(student.numberOfBooksIssued<2){
+        isStudentEligible=true
+      }
+      else{
+        isStudentEligible=false
+        Alert.alert("the student has already issued two books")
+        this.setState({
+          scannedStudentId:"",
+        scannedBookId:""
+        })
+      }
+    })
+  }
+  return isStudentEligible
+}
+checkStudentEligibilityForBookReturn=async()=>{
+  const transactionRef=await db.collection("transactions").where("bookId","==",this.state.scannedBookId).limit(1).get()
+  var isStudentEligible=""
+  transactionRef.docs.map((doc)=>{
+    var lastBookTransaction=doc.data()
+if(lastBookTransaction.studentId===this.state.scannedStudentId){
+  isStudentEligible=true
+}
+else{
+  isStudentEligible=false
+  Alert.alert("the book was not issued by the student")
+  this.setState({
+    scannedStudentId:"",
+    scannedBookId:""
+  })
+}
+  })
+  return isStudentEligible
+}
+  handleTransaction = async()=>{
+  var transactionType=await this.checkBookEligibility()
+  if(!transactionType){
+    Alert.alert("this book does not exist in the library")
+    this.setState({
+      scannedStudentId:"",
+      scannedBookId:""
+    })
+  }
+else if (transactionType==="issue"){
+var isStudentEligible=await this.checkStudentEligibilityForBookIssue()
+if(isStudentEligible){
+  this.initiateBookIssue()
+  Alert.alert("book issued to the student")
+}
+}
+else{
+  var isStudentEligible=await this.checkStudentEligibilityForBookReturn()
+    if (isStudentEligible){
+      this.initiateBookReturn(
+        Alert.alert("book returned to the library")
+      )
+    }
+  
+}
   }
 
   render(){
